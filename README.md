@@ -20,7 +20,7 @@ For more advanced use cases you can check out the [official documentation here](
 PM> Install-Package RedisRateLimiting
 ```
 ```
-TargetFramework: net7.0; net8.0
+TargetFramework: netstandard2.0; net7.0; net8.0; net9.0; net10.0
 
 Dependencies:
 StackExchange.Redis
@@ -31,7 +31,7 @@ System.Threading.RateLimiting
 PM> Install-Package RedisRateLimiting.AspNetCore
 ```
 ```
-TargetFramework: net7.0; net8.0
+TargetFramework: net7.0; net8.0; net9.0; net10.0
 
 Dependencies:
 RedisRateLimiting
