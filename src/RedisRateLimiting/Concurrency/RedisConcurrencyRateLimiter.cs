@@ -15,7 +15,7 @@ public class RedisConcurrencyRateLimiter<TKey> : RateLimiter
     private readonly RedisConcurrencyRateLimiterOptions _options;
     private readonly ConcurrentQueue<Request> _queue = new();
 
-    private readonly PeriodicTimer? _periodicTimer;
+    private readonly CancellationTokenSource? _dequeueCancellationTokenSource;
 
     private bool _disposed;
 
@@ -26,11 +26,14 @@ public class RedisConcurrencyRateLimiter<TKey> : RateLimiter
 
     public override TimeSpan? IdleDuration => Interlocked.CompareExchange(ref _activeRequestsCount, 0, 0) > 0
         ? null
-        : Stopwatch.GetElapsedTime(_idleSince);
+        : StopwatchExtensions.GetElapsedTime(_idleSince);
 
     public RedisConcurrencyRateLimiter(TKey partitionKey, RedisConcurrencyRateLimiterOptions options)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        if (options is null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
 
         if (options.PermitLimit <= 0)
         {
@@ -62,9 +65,9 @@ public class RedisConcurrencyRateLimiter<TKey> : RateLimiter
 
         if (_options.QueueLimit > 0)
         {
-            _periodicTimer = new PeriodicTimer(_options.TryDequeuePeriod);
+            _dequeueCancellationTokenSource = new CancellationTokenSource();
 
-            _ = StartDequeueTimerAsync(_periodicTimer);
+            _ = StartDequeueTimerAsync(_dequeueCancellationTokenSource.Token);
         }
     }
 
@@ -151,11 +154,18 @@ public class RedisConcurrencyRateLimiter<TKey> : RateLimiter
         _ = _redisManager.ReleaseLeaseAsync(leaseContext.RequestId);
     }
 
-    private async Task StartDequeueTimerAsync(PeriodicTimer periodicTimer)
+    private async Task StartDequeueTimerAsync(CancellationToken cancellationToken)
     {
-        while (await periodicTimer.WaitForNextTickAsync())
+        try
         {
-            await TryDequeueRequestsAsync();
+            while (true)
+            {
+                await Task.Delay(_options.TryDequeuePeriod, cancellationToken);
+                await TryDequeueRequestsAsync();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
     }
 
@@ -232,7 +242,8 @@ public class RedisConcurrencyRateLimiter<TKey> : RateLimiter
 
         _disposed = true;
 
-        _periodicTimer?.Dispose();
+        _dequeueCancellationTokenSource?.Cancel();
+        _dequeueCancellationTokenSource?.Dispose();
 
         while (_queue.TryDequeue(out var request))
         {

@@ -20,11 +20,14 @@ public class RedisFixedWindowRateLimiter<TKey> : RateLimiter
 
     public override TimeSpan? IdleDuration => Interlocked.CompareExchange(ref _activeRequestsCount, 0, 0) > 0
         ? null
-        : Stopwatch.GetElapsedTime(_idleSince);
+        : StopwatchExtensions.GetElapsedTime(_idleSince);
 
     public RedisFixedWindowRateLimiter(TKey partitionKey, RedisFixedWindowRateLimiterOptions options)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        if (options is null)
+        {
+            throw new ArgumentNullException(nameof(options));
+        }
 
         if (options.PermitLimit <= 0)
         {
